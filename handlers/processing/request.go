@@ -8,6 +8,7 @@ import (
 	"github.com/imgproxy/imgproxy/v4/fetcher"
 	"github.com/imgproxy/imgproxy/v4/handlers"
 	"github.com/imgproxy/imgproxy/v4/httpheaders/conditionalheaders"
+	"github.com/imgproxy/imgproxy/v4/imagedata"
 	"github.com/imgproxy/imgproxy/v4/imagetype"
 	"github.com/imgproxy/imgproxy/v4/options"
 	"github.com/imgproxy/imgproxy/v4/options/keys"
@@ -17,6 +18,7 @@ import (
 
 // request holds the parameters and state for a single request
 type request struct {
+	prepare func(imagedata.ImageData) *server.Error
 	HandlerContext
 
 	reqID    string
@@ -108,6 +110,13 @@ func (r *request) execute() *server.Error {
 			handlers.NewCantLoadError(ctx, originData.Format()),
 			handlers.ErrCategoryPathParsing,
 		)
+	}
+
+	// Internal adapters may refine dimensions/crop using this exact source.
+	if r.prepare != nil {
+		if err := r.prepare(originData); err != nil {
+			return err
+		}
 	}
 
 	// Actually process the image

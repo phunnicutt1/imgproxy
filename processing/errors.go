@@ -9,7 +9,8 @@ import (
 )
 
 type (
-	SaveFormatError struct{ *errctx.TextError }
+	SaveFormatError     struct{ *errctx.TextError }
+	PageOutOfRangeError struct{ *errctx.TextError }
 )
 
 func newSaveFormatError(format imagetype.Type) error {
@@ -18,6 +19,18 @@ func newSaveFormatError(format imagetype.Type) error {
 		1,
 		errctx.WithStatusCode(http.StatusUnprocessableEntity),
 		errctx.WithPublicMessage("Invalid URL"),
+		errctx.WithShouldReport(false),
+	)}
+}
+
+func newPageOutOfRangeError(page, pages int) error {
+	msg := fmt.Sprintf("Page %d is out of range (document has %d pages)", page, pages)
+
+	return PageOutOfRangeError{errctx.NewTextError(
+		msg,
+		1,
+		errctx.WithStatusCode(http.StatusUnprocessableEntity),
+		errctx.WithPublicMessage(msg),
 		errctx.WithShouldReport(false),
 	)}
 }

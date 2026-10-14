@@ -126,6 +126,11 @@ func (po ProcessingOptions) SetFormat(format imagetype.Type) {
 	po.Set(keys.Format, format)
 }
 
+// Page returns the 0-based page of a multi-page document (PDF) to render.
+func (po ProcessingOptions) Page() int {
+	return po.Main().GetInt(keys.Page, 0)
+}
+
 func (po ProcessingOptions) ShouldSkipFormatProcessing(inFormat imagetype.Type) bool {
 	return slices.Contains(po.config.SkipProcessingFormats, inFormat) ||
 		options.SliceContains(po.Main(), keys.SkipProcessing, inFormat)

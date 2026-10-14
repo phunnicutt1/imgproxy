@@ -365,6 +365,53 @@ func (s *ProcessingOptionsTestSuite) TestParsePathQuality() {
 	s.Require().Equal(55, o.GetInt(keys.Quality, 0))
 }
 
+func (s *ProcessingOptionsTestSuite) TestParsePathPage() {
+	testCases := []struct {
+		path string
+		page int
+	}{
+		{"/page:2/plain/http://images.dev/lorem/ipsum.pdf", 2},
+		{"/pg:0/plain/http://images.dev/lorem/ipsum.pdf", 0},
+		{"/pg:15/plain/http://images.dev/lorem/ipsum.pdf", 15},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.path, func() {
+			o, _, err := s.parser().ParsePath(s.T().Context(), tc.path, nil)
+
+			s.Require().NoError(err)
+			s.Require().True(o.Has(keys.Page))
+			s.Require().Equal(tc.page, o.GetInt(keys.Page, -1))
+		})
+	}
+}
+
+func (s *ProcessingOptionsTestSuite) TestParsePathPageDefault() {
+	path := "/plain/http://images.dev/lorem/ipsum.pdf"
+	o, _, err := s.parser().ParsePath(s.T().Context(), path, nil)
+
+	s.Require().NoError(err)
+	s.Require().False(o.Has(keys.Page))
+	s.Require().Equal(0, o.GetInt(keys.Page, 0))
+}
+
+func (s *ProcessingOptionsTestSuite) TestParsePathPageInvalid() {
+	testCases := []string{
+		"/page:-1/plain/http://images.dev/lorem/ipsum.pdf",
+		"/pg:abc/plain/http://images.dev/lorem/ipsum.pdf",
+		"/pg:1.5/plain/http://images.dev/lorem/ipsum.pdf",
+		"/pg:1:2/plain/http://images.dev/lorem/ipsum.pdf",
+	}
+
+	for _, path := range testCases {
+		s.Run(path, func() {
+			_, _, err := s.parser().ParsePath(s.T().Context(), path, nil)
+
+			s.Require().Error(err)
+		})
+	}
+}
+
 func (s *ProcessingOptionsTestSuite) TestParsePathBackground() {
 	path := "/background:128:129:130/plain/http://images.dev/lorem/ipsum.jpg"
 	o, _, err := s.parser().ParsePath(s.T().Context(), path, nil)

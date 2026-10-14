@@ -17,9 +17,13 @@ func (p *Processor) vectorGuardScale(c *Context) error {
 		shrink := math.Sqrt(float64(resolution) / float64(maxSrcRes))
 		c.VectorBaseShrink = shrink
 
-		if err := c.Img.Load(c.ImgData, shrink, 0, 1); err != nil {
+		if err := loadSinglePage(c.Img, c.ImgData, shrink, c.PO); err != nil {
 			return err
 		}
+
+		// Absolute crop offsets are in source image pixels, adjust them
+		// to the downscaled image. Crop sizes are adjusted in [Context.CalcParams].
+		c.shrinkCropGravity(shrink, shrink)
 	}
 	c.CalcParams()
 

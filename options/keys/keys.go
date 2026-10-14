@@ -75,6 +75,8 @@ const (
 
 	Format = "format"
 
+	Page = "page"
+
 	CacheBuster = "cachebuster"
 
 	SkipProcessing = "skip_processing"

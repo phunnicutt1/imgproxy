@@ -154,6 +154,22 @@ var (
 		SupportsThumbnail:     false,
 		SupportsHDR:           true,
 	})
+
+	// PDF is an input-only type: libvips renders a single page of it.
+	// It must never be used as an output format.
+	PDF = RegisterType(&TypeDesc{
+		String:                "pdf",
+		Ext:                   ".pdf",
+		Mime:                  "application/pdf",
+		IsVector:              true,
+		SupportsAlpha:         false,
+		SupportsColourProfile: false,
+		SupportsQuality:       false,
+		SupportsAnimationLoad: false,
+		SupportsAnimationSave: false,
+		SupportsThumbnail:     false,
+		SupportsHDR:           false,
+	})
 )
 
 // init registers default magic bytes for common image formats
@@ -214,4 +230,7 @@ func init() {
 
 	// BMP magic bytes
 	RegisterMagicBytes(BMP, []byte("BM"))
+
+	// PDF magic bytes
+	RegisterMagicBytes(PDF, []byte("%PDF-"))
 }

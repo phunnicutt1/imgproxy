@@ -114,6 +114,22 @@ That's it! imgproxy is ready to accept [image processing requests](https://docs.
 
 Check out the [Getting Started guide](https://docs.imgproxy.net/getting_started) for a step-by-step tutorial on how to get your first image processed with imgproxy.
 
+## About this fork
+
+This fork (branch `imgix-pdf`) can stand in for imgix in local development. It adds:
+
+* PDF input: a PDF-capable image built from [`docker/Dockerfile.pdf`](docker/Dockerfile.pdf) (libvips rebuilt with pdfium) and a 0-based `page`/`pg` processing option.
+* An opt-in imgix-compatible handler that answers imgix-style URLs (`w`, `h`, `fit`, `q`, `fm`, `page`, `rect`, `fm=json` page count). It is enabled with `IMGPROXY_IMGIX_COMPAT=true`, reads sources from `IMGPROXY_IMGIX_SOURCE_PREFIX`, and checks signatures only when `IMGPROXY_IMGIX_SIGN_KEY` is set. See [docs/imgix-compat.md](docs/imgix-compat.md).
+* A local MinIO + imgproxy stack and an imgix smoke test in [`docker/dev/`](docker/dev/):
+
+```bash
+docker compose -f docker/dev/compose.yml up -d --build
+```
+
+```bash
+python3 docker/dev/smoke.py
+```
+
 ## 📚 Documentation
 
 You can find the full documentation at [docs.imgproxy.net](https://docs.imgproxy.net).

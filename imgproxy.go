@@ -11,6 +11,7 @@ import (
 	"github.com/imgproxy/imgproxy/v4/errorreport"
 	"github.com/imgproxy/imgproxy/v4/fetcher"
 	healthhandler "github.com/imgproxy/imgproxy/v4/handlers/health"
+	imgixhandler "github.com/imgproxy/imgproxy/v4/handlers/imgix"
 	landinghandler "github.com/imgproxy/imgproxy/v4/handlers/landing"
 	processinghandler "github.com/imgproxy/imgproxy/v4/handlers/processing"
 	streamhandler "github.com/imgproxy/imgproxy/v4/handlers/stream"
@@ -33,6 +34,7 @@ const (
 
 // ImgproxyHandlers holds the handlers for imgproxy.
 type ImgproxyHandlers struct {
+	Imgix      *imgixhandler.Handler
 	Health     *healthhandler.Handler
 	Landing    *landinghandler.Handler
 	Processing *processinghandler.Handler
@@ -155,6 +157,13 @@ func New(ctx context.Context, config *Config) (*Imgproxy, error) {
 		return nil, err
 	}
 
+	if config.Handlers.Imgix.Compat {
+		imgproxy.handlers.Imgix, err = imgixhandler.New(imgproxy, imgproxy.handlers.Processing, &config.Handlers.Imgix, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return imgproxy, nil
 }
 
@@ -176,8 +185,12 @@ func (i *Imgproxy) BuildRouter() (*server.Router, error) {
 		r.GET(i.config.Server.HealthCheckPath, i.handlers.Health.Execute).Silent()
 	}
 
+	processingRoute := i.handlers.Processing.Execute
+	if i.config.Handlers.Imgix.Compat {
+		processingRoute = i.handlers.Imgix.Execute
+	}
 	r.GET(
-		"/*", i.handlers.Processing.Execute,
+		"/*", processingRoute,
 		r.WithSecret, r.WithCORS, r.WithPanic, r.WithReportError, r.WithMonitoring,
 	)
 

@@ -394,6 +394,11 @@ func (p *Parser) applyFormatOption(ctx context.Context, o *options.Options, args
 	return nil
 }
 
+// applyPageOption sets the 0-based page of a multi-page document (PDF) to render
+func (p *Parser) applyPageOption(ctx context.Context, o *options.Options, args []string) error {
+	return p.parsePositiveInt(ctx, o, keys.Page, args...)
+}
+
 func (p *Parser) applyCacheBusterOption(ctx context.Context, o *options.Options, args []string) error {
 	if err := p.ensureMaxArgs(ctx, keys.CacheBuster, args, 1); err != nil {
 		return err

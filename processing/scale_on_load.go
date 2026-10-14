@@ -90,7 +90,7 @@ func (p *Processor) scaleOnLoad(c *Context) error {
 		}
 
 		// Reload the image with preshrink
-		if err := newImg.Load(c.ImgData, preshrink, 0, 1); err != nil {
+		if err := loadSinglePage(newImg, c.ImgData, preshrink, c.PO); err != nil {
 			return err
 		}
 	}
@@ -139,18 +139,24 @@ func (p *Processor) scaleOnLoad(c *Context) error {
 	if c.CropHeight > 0 {
 		c.CropHeight = max(1, imath.Shrink(c.CropHeight, hpreshrink))
 	}
-	// Adjust crop gravity offsets.
-	// We don't need to adjust focus point offsets since they are always relative.
-	// For other gravity types, we need to adjust only absolute offsets (>= 1.0 or <= -1.0).
-	// We round absolute offsets to prevent turning them to relative (ex: 1.0 => 0.5).
-	if c.CropGravity.Type != GravityFocusPoint {
-		if math.Abs(c.CropGravity.X) >= 1.0 {
-			c.CropGravity.X = math.RoundToEven(c.CropGravity.X / wpreshrink)
-		}
-		if math.Abs(c.CropGravity.Y) >= 1.0 {
-			c.CropGravity.Y = math.RoundToEven(c.CropGravity.Y / hpreshrink)
-		}
-	}
+	c.shrinkCropGravity(wpreshrink, hpreshrink)
 
 	return nil
+}
+
+// shrinkCropGravity adjusts absolute crop gravity offsets after the image
+// was loaded downscaled.
+// We don't need to adjust focus point offsets since they are always relative.
+// For other gravity types, we need to adjust only absolute offsets (>= 1.0 or <= -1.0).
+// We round absolute offsets to prevent turning them to relative (ex: 1.0 => 0.5).
+func (c *Context) shrinkCropGravity(wshrink, hshrink float64) {
+	if c.CropGravity.Type == GravityFocusPoint {
+		return
+	}
+	if math.Abs(c.CropGravity.X) >= 1.0 {
+		c.CropGravity.X = math.RoundToEven(c.CropGravity.X / wshrink)
+	}
+	if math.Abs(c.CropGravity.Y) >= 1.0 {
+		c.CropGravity.Y = math.RoundToEven(c.CropGravity.Y / hshrink)
+	}
 }

@@ -75,7 +75,7 @@ func (p *Processor) ProcessImage(
 
 	// Load a single page/frame of the image so we can analyze it
 	// and decide how to process it further
-	thumbnailLoaded, err := p.initialLoadImage(img, imgdata, po.EnforceThumbnail())
+	thumbnailLoaded, err := p.initialLoadImage(img, imgdata, po)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +148,9 @@ func (p *Processor) ProcessImage(
 func (p *Processor) initialLoadImage(
 	img *vips.Image,
 	imgdata imagedata.ImageData,
-	enforceThumbnail bool,
+	po ProcessingOptions,
 ) (bool, error) {
-	if enforceThumbnail && imgdata.Format().SupportsThumbnail() {
+	if po.EnforceThumbnail() && imgdata.Format().SupportsThumbnail() {
 		if err := img.LoadThumbnail(imgdata); err == nil {
 			return true, nil
 		} else {
@@ -158,7 +158,46 @@ func (p *Processor) initialLoadImage(
 		}
 	}
 
-	return false, img.Load(imgdata, 1.0, 0, 1)
+	return false, loadSinglePage(img, imgdata, 1.0, po)
+}
+
+// loadPage returns the page of the source image that should be loaded.
+// Only PDF sources support page selection; other images always load the first page.
+func loadPage(imgdata imagedata.ImageData, po ProcessingOptions) int {
+	if imgdata.Format() == imagetype.PDF {
+		return po.Page()
+	}
+
+	return 0
+}
+
+// loadSinglePage loads a single page/frame of the image with the given shrink.
+// For PDF sources, it loads the page requested in the processing options.
+func loadSinglePage(
+	img *vips.Image,
+	imgdata imagedata.ImageData,
+	shrink float64,
+	po ProcessingOptions,
+) error {
+	page := loadPage(imgdata, po)
+
+	err := img.Load(imgdata, shrink, page, 1)
+	if err == nil || page == 0 {
+		return err
+	}
+
+	// libvips fails to load a page that is out of range.
+	// Load the first page to get the number of pages and check if this is the case.
+	probe := new(vips.Image)
+	defer probe.Clear()
+
+	if probe.Load(imgdata, 1.0, 0, 1) == nil {
+		if pages := probe.Pages(); page >= pages {
+			return newPageOutOfRangeError(page, pages)
+		}
+	}
+
+	return err
 }
 
 // reloadImageForProcessing reloads the image for processing.
@@ -229,6 +268,11 @@ func (p *Processor) shouldSkipStandardProcessing(
 	outFormat := po.Format()
 	skipProcessingFormatEnabled := po.ShouldSkipFormatProcessing(inFormat)
 
+	// PDF can't be returned as is, it should always be rendered
+	if inFormat == imagetype.PDF {
+		return false
+	}
+
 	if inFormat == imagetype.SVG {
 		isOutUnknown := outFormat == imagetype.Unknown
 
@@ -295,8 +339,8 @@ func (p *Processor) determineOutputFormat(
 	format := po.Format()
 
 	switch {
-	case format == imagetype.SVG:
-		// At this point we can't allow requested format to be SVG as we can't save SVGs
+	case format == imagetype.SVG, format == imagetype.PDF:
+		// At this point we can't allow requested format to be SVG or PDF as we can't save them
 		return imagetype.Unknown, newSaveFormatError(format)
 	case format == imagetype.Unknown:
 		switch {

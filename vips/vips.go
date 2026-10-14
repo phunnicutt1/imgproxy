@@ -164,6 +164,8 @@ func SupportsLoad(it imagetype.Type) bool {
 		sup = hasOperation("icoload_source")
 	case imagetype.SVG:
 		sup = hasOperation("svgload_source")
+	case imagetype.PDF:
+		sup = hasOperation("pdfload_source")
 	case imagetype.HEIC, imagetype.AVIF:
 		sup = hasOperation("heifload_source")
 	case imagetype.TIFF:
@@ -283,6 +285,8 @@ func (img *Image) Load(
 		err = C.vips_gifload_source_go(source, &tmp, lo)
 	case imagetype.SVG:
 		err = C.vips_svgload_source_go(source, &tmp, lo)
+	case imagetype.PDF:
+		err = C.vips_pdfload_source_go(source, &tmp, lo)
 	case imagetype.HEIC, imagetype.AVIF:
 		err = C.vips_heifload_source_go(source, &tmp, lo)
 	case imagetype.TIFF:

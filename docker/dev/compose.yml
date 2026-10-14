@@ -1,0 +1,90 @@
+# Local imgix stand-in: MinIO + the PDF-capable, imgix-compatible imgproxy fork.
+#
+#   docker compose -f docker/dev/compose.yml up -d --build
+#   python3 docker/dev/smoke.py            # imgix-style requests on http://localhost:8089
+#
+# Requests look exactly like the app's imgix URLs, minus the host:
+#   http://localhost:8089/fixtures/test-3pages.pdf?page=2&w=300&fm=png
+#   http://localhost:8089/fixtures/test-3pages.pdf?fm=json  -> {"PDF":{"PageCount":3}}
+
+name: imgproxy-imgix-dev
+
+services:
+  # Docker Hub withdrew minio/minio and minio/mc, so MinIO and mc are built from source
+  # (docker/dev/minio/Dockerfile) at pinned releases. pull_policy: build means compose never
+  # pulls these names from a registry. MinIO and mc are AGPL-3.0: never push these images.
+  # MINIO_IMAGE / MC_IMAGE override the tags the build produces.
+  minio:
+    image: ${MINIO_IMAGE:-imgix-dev/minio:RELEASE.2025-09-07T16-13-09Z}
+    build:
+      context: ./minio
+      target: minio
+    pull_policy: build
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      retries: 30
+
+  # Generates the smoke-test fixtures (stdlib-only script) into a shared volume.
+  fixtures:
+    image: python:3.13-alpine
+    command: ["python3", "-I", "/scripts/make_fixtures.py", "/out/fixtures"]
+    volumes:
+      - ./fixtures:/scripts:ro
+      - fixtures:/out
+
+  # Creates the bucket and uploads the fixtures. Real dev data can be copied in the same way.
+  seed:
+    image: ${MC_IMAGE:-imgix-dev/mc:RELEASE.2025-08-13T08-35-41Z}
+    build:
+      context: ./minio
+      target: mc
+    pull_policy: build
+    depends_on:
+      minio:
+        condition: service_healthy
+      fixtures:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/imgix-dev &&
+        mc cp --recursive /in/fixtures/ local/imgix-dev/fixtures/
+    volumes:
+      - fixtures:/in:ro
+
+  imgproxy:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.pdf
+    image: imgproxy-imgix:dev
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    environment:
+      IMGPROXY_IMGIX_COMPAT: "true"
+      IMGPROXY_IMGIX_SOURCE_PREFIX: "s3://imgix-dev/"
+      # IMGPROXY_IMGIX_SIGN_KEY: ""   # set to verify imgix `s` signatures; unset = ignore them
+      IMGPROXY_USE_S3: "true"
+      IMGPROXY_S3_ENDPOINT: "http://minio:9000"
+      IMGPROXY_S3_ENDPOINT_USE_PATH_STYLE: "true"
+      IMGPROXY_S3_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      IMGPROXY_LOG_LEVEL: "debug"
+    ports:
+      - "127.0.0.1:8089:8080"
+
+volumes:
+  minio-data:
+  fixtures:

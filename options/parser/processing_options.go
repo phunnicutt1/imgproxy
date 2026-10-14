@@ -88,6 +88,9 @@ func (p *Parser) applyURLOption(
 		return p.applyMaxBytesOption(ctx, o.Main(), args)
 	case "format", "f", "ext":
 		return p.applyFormatOption(ctx, o.Main(), args)
+	// Loading options
+	case "page", "pg":
+		return p.applyPageOption(ctx, o.Main(), args)
 	// Handling options
 	case "skip_processing", "skp":
 		return p.applySkipProcessingFormatsOption(ctx, o.Main(), args)

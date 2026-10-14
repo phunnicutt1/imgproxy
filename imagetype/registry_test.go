@@ -98,6 +98,17 @@ func TestTypeProperties(t *testing.T) {
 			expectThumbnail:     false,
 		},
 		{
+			name:                "PDF",
+			typ:                 imagetype.PDF,
+			expectVector:        true,
+			expectAlpha:         false,
+			expectColourProfile: false,
+			expectQuality:       false,
+			expectAnimationLoad: false,
+			expectAnimationSave: false,
+			expectThumbnail:     false,
+		},
+		{
 			name:                "GIF",
 			typ:                 imagetype.GIF,
 			expectVector:        false,

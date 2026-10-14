@@ -158,6 +158,51 @@ vips_svgload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoad
       NULL);
 }
 
+// loads a single PDF page from a source.
+// PDF points are rendered at 72 DPI, so 1 point = 1 pixel at scale 1.
+int
+vips_pdfload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo)
+{
+  if (check_shrink("vips_pdfload_source_go", lo.Shrink))
+    return -1;
+
+  double scale = 1.0 / lo.Shrink;
+
+  /* Render pages on opaque white instead of transparent.
+   * pdfload renders RGBA, so the background must have 4 elements.
+   */
+  double bg[] = { 255.0, 255.0, 255.0, 255.0 };
+  VipsArrayDouble *background = vips_array_double_new(bg, VIPS_NUMBER(bg));
+
+  VipsImage *tmp = NULL;
+
+  int res = vips_pdfload_source(
+      VIPS_SOURCE(source), &tmp,
+      "access", VIPS_ACCESS_SEQUENTIAL,
+      "page", lo.Page,
+      "n", 1,
+      "scale", scale,
+      "background", background,
+      NULL);
+
+  vips_area_unref(VIPS_AREA(background));
+
+  if (res)
+    return res;
+
+  /* The page is rendered on an opaque background, so the alpha band
+   * pdfload outputs is always opaque. Drop it.
+   */
+  if (tmp->Bands == 4)
+    res = vips_extract_band(tmp, out, 0, "n", 3, NULL);
+  else
+    res = vips_copy(tmp, out, NULL);
+
+  VIPS_UNREF(tmp);
+
+  return res;
+}
+
 int
 vips_heifload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo)
 {

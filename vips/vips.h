@@ -32,6 +32,7 @@ int vips_pngload_source_go(VipsImgproxySource *source, VipsImage **out, Imgproxy
 int vips_webpload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo);
 int vips_gifload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo);
 int vips_svgload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo);
+int vips_pdfload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo);
 int vips_heifload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo);
 int vips_tiffload_source_go(VipsImgproxySource *source, VipsImage **out, ImgproxyLoadOptions lo);
 

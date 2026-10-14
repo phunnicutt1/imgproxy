@@ -272,6 +272,18 @@ func (c *Context) CalcParams() {
 	c.CropWidth = CalcCropSize(c.SrcWidth, c.PO.CropWidth())
 	c.CropHeight = CalcCropSize(c.SrcHeight, c.PO.CropHeight())
 
+	// Absolute crop sizes are in source image pixels.
+	// If a vector image was loaded downscaled by [Processor.vectorGuardScale],
+	// we need to shrink them accordingly.
+	if c.VectorBaseShrink != 1.0 {
+		if c.PO.CropWidth() >= 1.0 {
+			c.CropWidth = max(1, imath.Shrink(c.CropWidth, c.VectorBaseShrink))
+		}
+		if c.PO.CropHeight() >= 1.0 {
+			c.CropHeight = max(1, imath.Shrink(c.CropHeight, c.VectorBaseShrink))
+		}
+	}
+
 	widthToScale := imath.MinNonZero(c.CropWidth, c.SrcWidth)
 	heightToScale := imath.MinNonZero(c.CropHeight, c.SrcHeight)
 

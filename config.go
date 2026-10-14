@@ -7,6 +7,7 @@ import (
 	"github.com/imgproxy/imgproxy/v4/ensure"
 	"github.com/imgproxy/imgproxy/v4/errorreport"
 	"github.com/imgproxy/imgproxy/v4/fetcher"
+	imgixhandler "github.com/imgproxy/imgproxy/v4/handlers/imgix"
 	processinghandler "github.com/imgproxy/imgproxy/v4/handlers/processing"
 	streamhandler "github.com/imgproxy/imgproxy/v4/handlers/stream"
 	"github.com/imgproxy/imgproxy/v4/httpheaders/conditionalheaders"
@@ -21,6 +22,7 @@ import (
 
 // HandlerConfigs holds the configurations for imgproxy handlers
 type HandlerConfigs struct {
+	Imgix      imgixhandler.Config
 	Processing processinghandler.Config
 	Stream     streamhandler.Config
 }
@@ -52,6 +54,7 @@ func NewDefaultConfig() Config {
 		Fetcher:        fetcher.NewDefaultConfig(),
 		ClientFeatures: clientfeatures.NewDefaultConfig(),
 		Handlers: HandlerConfigs{
+			Imgix:      imgixhandler.NewDefaultConfig(),
 			Processing: processinghandler.NewDefaultConfig(),
 			Stream:     streamhandler.NewDefaultConfig(),
 		},
@@ -96,6 +99,10 @@ func LoadConfigFromEnv(c *Config) (*Config, error) {
 		return nil, err
 	}
 
+	if _, err = imgixhandler.LoadConfigFromEnv(&c.Handlers.Imgix); err != nil {
+		return nil, err
+	}
+
 	if _, err = processinghandler.LoadConfigFromEnv(&c.Handlers.Processing); err != nil {
 		return nil, err
 	}
@@ -136,6 +143,9 @@ func LoadConfigFromEnv(c *Config) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
+	if err := c.Handlers.Imgix.Validate(); err != nil {
+		return err
+	}
 	if c.Monitoring.Prometheus.Enabled() && c.Monitoring.Prometheus.Bind == c.Server.Bind {
 		return prometheus.IMGPROXY_PROMETHEUS_BIND.Errorf("should be different than IMGPROXY_BIND: %s", c.Server.Bind)
 	}

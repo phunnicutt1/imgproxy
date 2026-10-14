@@ -1,0 +1,131 @@
+# PDF-capable variant of docker/Dockerfile: rebuilds libvips with PDFium
+# and omits the AWS Lambda adapter.
+ARG BASE_IMAGE_VERSION="v4.1.8"
+
+# vips-pdf: base image + pdfium + libvips rebuilt with pdfload. Keeps pkg-config files,
+# so it doubles as the environment for `go test` (docker build --target vips-pdf).
+FROM ghcr.io/imgproxy/imgproxy-base:${BASE_IMAGE_VERSION} AS vips-pdf
+
+ENV CGO_ENABLED=1
+
+ARG TARGETARCH
+ARG PDFIUM_VERSION="8066"
+ARG PDFIUM_SHA256_ARM64="0e6f90dccbc6b81fd5d7106abaf164c4222178f024c204d00d526b60fd2ad535"
+ARG PDFIUM_SHA256_AMD64="0b43f405477cf2cfc4dbff06905093c3309756c6bca1fb9da99234a2ca97fed2"
+
+RUN bash -c 'set -e; \
+  case "$TARGETARCH" in \
+    arm64) pdfium_arch=arm64; pdfium_sha256="$PDFIUM_SHA256_ARM64" ;; \
+    amd64) pdfium_arch=x64; pdfium_sha256="$PDFIUM_SHA256_AMD64" ;; \
+    *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+  esac; \
+  workdir=$(mktemp -d); \
+  curl -fSL "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F${PDFIUM_VERSION}/pdfium-linux-${pdfium_arch}.tgz" -o "$workdir/pdfium.tgz"; \
+  printf "%s  %s\n" "$pdfium_sha256" "$workdir/pdfium.tgz" | sha256sum -c -; \
+  tar -xzf "$workdir/pdfium.tgz" -C "$workdir"; \
+  mkdir -p /opt/imgproxy/include/pdfium /opt/imgproxy/lib/pkgconfig /opt/imgproxy/share/doc/pdfium; \
+  cp -a "$workdir/include/." /opt/imgproxy/include/pdfium/; \
+  cp -a "$workdir/lib/libpdfium.so" /opt/imgproxy/lib/; \
+  cp "$workdir/LICENSE" /opt/imgproxy/share/doc/pdfium/; \
+  printf "%s\n" \
+    "Name: pdfium" \
+    "Description: PDFium PDF rendering library" \
+    "Version: $PDFIUM_VERSION" \
+    "Cflags: -I/opt/imgproxy/include/pdfium" \
+    "Libs: -L/opt/imgproxy/lib -lpdfium" \
+    > /opt/imgproxy/lib/pkgconfig/pdfium.pc; \
+  rm -rf "$workdir"'
+
+ARG MESON_VERSION="1.12.1"
+ARG NINJA_VERSION="1.13.2"
+
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3-venv \
+  && rm -rf /var/lib/apt/lists/* \
+  && python3 -m venv /root/.python \
+  && /root/.python/bin/pip install --no-cache-dir meson==${MESON_VERSION} ninja==${NINJA_VERSION}
+
+ARG VIPS_VERSION="8.18.7"
+ARG VIPS_SHA256="5baaead3b0bb20ffdb9e9ff09aa9fda08620923df77b63b436654cb5e0b3bf94"
+
+# Bash loads the base image build environment through BASH_ENV.
+RUN bash -c 'set -e; \
+  workdir=$(mktemp -d); \
+  curl -fSL "https://github.com/libvips/libvips/releases/download/v${VIPS_VERSION}/vips-${VIPS_VERSION}.tar.xz" -o "$workdir/vips.tar.xz"; \
+  printf "%s  %s\n" "$VIPS_SHA256" "$workdir/vips.tar.xz" | sha256sum -c -; \
+  tar -xJf "$workdir/vips.tar.xz" -C "$workdir"; \
+  cd "$workdir/vips-${VIPS_VERSION}"; \
+  CFLAGS="${CFLAGS} -O3" CXXFLAGS="${CXXFLAGS} -O3" \
+    meson setup _build --buildtype=release --strip --wrap-mode=nofallback \
+    --prefix=/opt/imgproxy --libdir=lib \
+    -Ddocs=false -Dintrospection=disabled -Dmodules=disabled -Dpdfium=enabled; \
+  ninja -C _build; \
+  ninja -C _build install; \
+  vips -l | grep -q pdfload_source; \
+  vips -l | grep pdfload_source; \
+  cd /; \
+  rm -rf "$workdir"'
+
+# ==================================================================================================
+# imgproxy build
+
+FROM vips-pdf AS build
+
+COPY . .
+RUN bash -c 'go build -v -ldflags "-s -w" -o /opt/imgproxy/bin/imgproxy ./cli'
+
+# Remove unnecessary files
+RUN rm -rf /opt/imgproxy/lib/pkgconfig /opt/imgproxy/lib/cmake
+
+# ==================================================================================================
+# Final image
+
+FROM public.ecr.aws/ubuntu/ubuntu:noble
+LABEL maintainer="Sergey Alexandrovich <darthsim@gmail.com>"
+
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  bash \
+  ca-certificates \
+  libstdc++6 \
+  fontconfig-config \
+  fonts-dejavu-core \
+  media-types \
+  libjemalloc2 \
+  libtcmalloc-minimal4 \
+  && ln -s /usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so \
+  && ln -s /usr/lib/$(uname -m)-linux-gnu/libtcmalloc_minimal.so.4 /usr/local/lib/libtcmalloc_minimal.so \
+  && rm -rf /var/lib/apt/lists/* \
+  && rm -rf /etc/fonts/conf.d/10-sub-pixel-rgb.conf /etc/fonts/conf.d/11-lcdfilter-default.conf
+
+COPY --from=build /opt/imgproxy/bin/imgproxy /opt/imgproxy/bin/
+COPY --from=build /opt/imgproxy/lib /opt/imgproxy/lib
+COPY --from=build /opt/imgproxy/share/sbom /opt/imgproxy/share/sbom
+COPY --from=build /opt/imgproxy/share/doc/pdfium /opt/imgproxy/share/doc/pdfium
+RUN ln -s /opt/imgproxy/bin/imgproxy /usr/local/bin/imgproxy
+
+COPY docker/entrypoint.sh /usr/local/bin/
+
+COPY docker/imgproxy-build-package /usr/local/bin/
+
+COPY NOTICE /opt/imgproxy/share/doc/
+
+ENV VIPS_WARNING=0
+ENV MALLOC_ARENA_MAX=2
+ENV FONTCONFIG_PATH="/etc/fonts"
+ENV IMGPROXY_MALLOC="malloc"
+
+# Disable SVE on ARM64. SVE is slower than NEON on Amazon Graviton 3
+ENV VIPS_VECTOR=167772160
+
+RUN groupadd -r imgproxy \
+  && useradd -r -u 999 -g imgproxy imgproxy \
+  && mkdir -p /var/cache/fontconfig \
+  && chmod 777 /var/cache/fontconfig
+USER 999
+
+ENTRYPOINT [ "entrypoint.sh" ]
+CMD ["imgproxy"]
+
+EXPOSE 8080

@@ -13,7 +13,9 @@ import (
 	"github.com/imgproxy/imgproxy/v4/handlers/stream"
 	"github.com/imgproxy/imgproxy/v4/httpheaders/conditionalheaders"
 	"github.com/imgproxy/imgproxy/v4/imagedata"
+	"github.com/imgproxy/imgproxy/v4/imagetype"
 	"github.com/imgproxy/imgproxy/v4/monitoring"
+	"github.com/imgproxy/imgproxy/v4/options"
 	"github.com/imgproxy/imgproxy/v4/options/keys"
 	optionsparser "github.com/imgproxy/imgproxy/v4/options/parser"
 	"github.com/imgproxy/imgproxy/v4/processing"
@@ -66,6 +68,45 @@ func New(
 	}, nil
 }
 
+// PreparePath can refine a trusted internal path after downloading the source.
+// It runs under the processing worker and must retain the source URL and any
+// output format the original path set.
+type PreparePath func(imagedata.ImageData) (string, error)
+
+// ExecutePath executes a trusted, signature-free processing path (options/source,
+// without an /insecure/ prefix). Only internal adapters that authenticate their
+// own requests may call it. Source URL verification is NEVER bypassed.
+func (h *Handler) ExecutePath(reqID, path string, rw server.ResponseWriter, req *http.Request, prepare PreparePath) *server.Error {
+	h.Monitoring().Stats().IncRequestsInProgress()
+	defer h.Monitoring().Stats().DecRequestsInProgress()
+	r, err := h.newRequestPath(req, path)
+	if err != nil {
+		return err
+	}
+	if prepare != nil {
+		r.prepare = func(data imagedata.ImageData) *server.Error {
+			refined, err := prepare(data)
+			if err != nil {
+				return server.NewError(errctx.Wrap(err), handlers.ErrCategoryProcessing)
+			}
+			next, serr := h.newRequestPath(req, refined)
+			if serr != nil {
+				return serr
+			}
+			// The source must not change. The output format may only be filled
+			// in when the original path left it unset.
+			format := options.Get(r.opts, keys.Format, imagetype.Unknown)
+			nextFormat := options.Get(next.opts, keys.Format, imagetype.Unknown)
+			if next.imageURL != r.imageURL || (format != imagetype.Unknown && nextFormat != format) {
+				return server.NewError(handlers.NewInvalidPathError(req.Context(), ""), handlers.ErrCategoryPathParsing)
+			}
+			r.opts = next.opts
+			return nil
+		}
+	}
+	return h.executeRequest(reqID, rw, req, r)
+}
+
 // Execute handles the image processing request
 func (h *Handler) Execute(
 	reqID string,
@@ -82,6 +123,10 @@ func (h *Handler) Execute(
 		return err
 	}
 
+	return h.executeRequest(reqID, rw, req, r)
+}
+
+func (h *Handler) executeRequest(reqID string, rw server.ResponseWriter, req *http.Request, r *request) *server.Error {
 	// if processing options indicate raw image streaming, stream it and return
 	if r.opts.GetBool(keys.Raw, false) {
 		return h.stream.Execute(req, r.imageURL, reqID, r.opts, rw)
@@ -109,6 +154,10 @@ func (h *Handler) newRequest(req *http.Request) (*request, *server.Error) {
 		return nil, server.NewError(errctx.Wrap(err), handlers.ErrCategorySecurity)
 	}
 
+	return h.newRequestPath(req, path)
+}
+
+func (h *Handler) newRequestPath(req *http.Request, path string) (*request, *server.Error) {
 	// parse image url and processing options
 	features := h.ClientFeaturesDetector().Features(req.Header)
 	o, imageURL, err := h.OptionsParser().ParsePath(req.Context(), path, &features)

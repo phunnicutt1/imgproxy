@@ -11,6 +11,8 @@ var badImageErrRe = []*regexp.Regexp{
 	regexp.MustCompile(`^(\S+)load_source: `),
 	regexp.MustCompile(`^(\S+)2vips: `),
 	regexp.MustCompile(`^VipsJpeg: `),
+	// PDFium document open errors (encrypted, corrupt, not a PDF)
+	regexp.MustCompile(`^pdfload: `),
 	regexp.MustCompile(`XML parse error: `),
 }
 

@@ -3,6 +3,7 @@ package imagetype_test
 import (
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,7 @@ func TestDefaultTypesRegistered(t *testing.T) {
 	defaultTypes := []imagetype.Type{
 		imagetype.JPEG, imagetype.JXL, imagetype.PNG, imagetype.WEBP, imagetype.GIF,
 		imagetype.ICO, imagetype.SVG, imagetype.HEIC, imagetype.AVIF, imagetype.BMP, imagetype.TIFF,
+		imagetype.PDF,
 	}
 
 	for _, typ := range defaultTypes {
@@ -47,6 +49,7 @@ func TestDetect(t *testing.T) {
 		{"BMP", "../testdata/test-images/bmp/24-bpp.bmp", imagetype.BMP},
 		{"TIFF", "../testdata/test-images/tiff/tiff.tiff", imagetype.TIFF},
 		{"SVG", "../testdata/test-images/svg/svg.svg", imagetype.SVG},
+		{"PDF", "../testdata/test-3pages.pdf", imagetype.PDF},
 		{"RAW", "../testdata/test-images/raw/RAW_CANON_1DM2.CR2", imagetype.Unknown}, // RAW is not supported
 	}
 
@@ -65,4 +68,28 @@ func TestDetect(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestPDFType(t *testing.T) {
+	require.Equal(t, "pdf", imagetype.PDF.String())
+	require.Equal(t, ".pdf", imagetype.PDF.Ext())
+	require.Equal(t, "application/pdf", imagetype.PDF.Mime())
+
+	typ, ok := imagetype.GetTypeByName("pdf")
+	require.True(t, ok)
+	require.Equal(t, imagetype.PDF, typ)
+}
+
+func TestDetectPDFMagicBytes(t *testing.T) {
+	typ, err := imagetype.Detect(strings.NewReader("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n"), "", "")
+	require.NoError(t, err)
+	require.Equal(t, imagetype.PDF, typ)
+
+	// Content type and extension don't matter, only the magic bytes do
+	typ, err = imagetype.Detect(strings.NewReader("%PDF-2.0\n"), "application/octet-stream", ".bin")
+	require.NoError(t, err)
+	require.Equal(t, imagetype.PDF, typ)
+
+	_, err = imagetype.Detect(strings.NewReader("%PDX-1.7\n"), "application/pdf", ".pdf")
+	require.Error(t, err)
 }
